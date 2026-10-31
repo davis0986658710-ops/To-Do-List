@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f8f7ff" />
+  <title>我的待辦清單 | To-Do List</title>
+  <style>
+    :root { font-family: -apple-system, BlinkMacSystemFont, "Noto Sans TC", "Microsoft JhengHei", sans-serif; color: #27253b; background: #f8f7ff; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; padding: 72px 18px; background: radial-gradient(circle at 90% 5%, #e7e1ff 0, transparent 34%), #f8f7ff; }
+    .app { max-width: 680px; margin: auto; }
+    .eyebrow { font-size: 13px; font-weight: 800; letter-spacing: .17em; color: #8175b7; }
+    h1 { font-size: clamp(32px, 6vw, 44px); margin: 10px 0 8px; letter-spacing: -.04em; }
+    .subtitle { color: #7d7a92; margin: 0 0 30px; line-height: 1.7; }
+    .panel { background: #fff; border: 1px solid #eeeafb; border-radius: 23px; box-shadow: 0 15px 45px #4f3c8910; padding: 25px; }
+    form { display: flex; gap: 10px; }
+    input { width: 100%; min-width: 0; padding: 15px 17px; font: inherit; border: 1.5px solid #e9e5f2; border-radius: 13px; outline: none; transition: border-color .15s; }
+    input:focus { border-color: #8d7bdf; }
+    button { font: inherit; cursor: pointer; }
+    .add { flex-shrink: 0; border: 0; padding: 0 19px; border-radius: 13px; background: #7662d7; color: white; font-weight: 700; }
+    .add:hover { background: #634cce; }
+    .stats { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 26px; }
+    .stats strong { font-size: 15px; }
+    .count { font-size: 13px; color: #858099; }
+    .progress { height: 7px; margin: 14px 0 22px; border-radius: 20px; background: #f0edfa; overflow: hidden; }
+    .progress > div { height: 100%; width: 0; border-radius: inherit; background: #8b78e4; transition: width .2s; }
+    .filters { display: flex; gap: 8px; flex-wrap: wrap; padding-bottom: 14px; }
+    .filter { border: 0; background: #f4f1fd; color: #746d8d; padding: 9px 15px; border-radius: 100px; font-size: 13px; }
+    .filter.active { background: #7662d7; color: white; }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #f1eff7; padding: 15px 0; }
+    li:last-child { border-bottom: 0; }
+    .check { height: 23px; width: 23px; accent-color: #7662d7; flex-shrink: 0; cursor: pointer; }
+    .task-text { flex: 1; min-width: 0; line-height: 1.6; overflow-wrap: anywhere; }
+    li.done .task-text { text-decoration: line-through; color: #aaa5ba; }
+    .delete { border: 0; background: #fff0f2; color: #be536b; border-radius: 10px; padding: 8px 11px; font-size: 13px; }
+    .delete:hover { background: #ffe2e8; }
+    .empty { padding: 38px 0 24px; text-align: center; color: #9992ad; font-size: 14px; line-height: 1.7; }
+    footer { text-align: center; font-size: 12px; color: #9992ad; margin-top: 22px; }
+    @media (max-width: 440px) { body { padding-top: 40px; } .panel { padding: 19px; } .add { padding: 0 14px; } }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <div class="eyebrow">MY DAILY PLANNER</div>
+    <h1>✨ 我的待辦清單</h1>
+    <p class="subtitle">把想做的事記下來，一件一件完成吧！</p>
+    <section class="panel" aria-label="待辦清單">
+      <form id="todo-form">
+        <input id="todo-input" type="text" maxlength="200" placeholder="今天有什麼想完成的事？" aria-label="新增待辦事項" required autocomplete="off" />
+        <button class="add" type="submit">＋ 新增</button>
+      </form>
+      <div class="stats"><strong>任務進度</strong><span class="count" id="count">0 / 0 已完成</span></div>
+      <div class="progress" role="progressbar" aria-label="完成進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress"><div id="progress-fill"></div></div>
+      <div class="filters" role="group" aria-label="篩選待辦事項">
+        <button class="filter active" type="button" data-filter="all" aria-pressed="true">全部</button>
+        <button class="filter" type="button" data-filter="active" aria-pressed="false">待完成</button>
+        <button class="filter" type="button" data-filter="done" aria-pressed="false">已完成</button>
+      </div>
+      <ul id="todo-list" aria-label="任務列表"></ul>
+      <p class="empty" id="empty">目前還沒有任務 ✨<br />新增第一件待辦事項吧！</p>
+    </section>
+    <footer>資料自動保存在此瀏覽器中，重新整理頁面也不會消失。</footer>
+  </main>
+  <script>
+    'use strict';
+    const STORAGE_KEY = 'swp03-todo-list-v1';
+    const form = document.querySelector('#todo-form');
+    const input = document.querySelector('#todo-input');
+    const list = document.querySelector('#todo-list');
+    const empty = document.querySelector('#empty');
+    const count = document.querySelector('#count');
+    const progress = document.querySelector('#progress');
+    const progressFill = document.querySelector('#progress-fill');
+    const filterButtons = document.querySelectorAll('.filter');
+    let filter = 'all';
+
+    function loadTodos() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+        if (!Array.isArray(saved)) return [];
+        return saved.filter(item => item && typeof item.id === 'string' && typeof item.text === 'string' && typeof item.done === 'boolean');
+      } catch (error) {
+        console.warn('無法讀取待辦清單：', error);
+        return [];
+      }
+    }
+    let todos = loadTodos();
+    function saveTodos() {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(todos)); }
+      catch (error) { alert('儲存失敗，請確認瀏覽器允許使用 LocalStorage。'); console.error(error); }
+    }
+    function render() {
+      list.replaceChildren();
+      const visible = todos.filter(item => filter === 'all' || (filter === 'done' ? item.done : !item.done));
+      for (const item of visible) {
+        const li = document.createElement('li');
+        if (item.done) li.classList.add('done');
+        const checkbox = document.createElement('input');
+        checkbox.className = 'check';
+        checkbox.type = 'checkbox';
+        checkbox.checked = item.done;
+        checkbox.setAttribute('aria-label', `標記「${item.text}」${item.done ? '未完成' : '完成'}`);
+        checkbox.addEventListener('change', () => {
+          item.done = checkbox.checked;
+          saveTodos();
+          render();
+        });
+        const taskText = document.createElement('span');
+        taskText.className = 'task-text';
+        taskText.textContent = item.text; // 避免透過 innerHTML 插入使用者輸入
+        const deleteButton = document.createElement('button');
+        deleteButton.className = 'delete';
+        deleteButton.type = 'button';
+        deleteButton.textContent = '刪除';
+        deleteButton.setAttribute('aria-label', `刪除「${item.text}」`);
+        deleteButton.addEventListener('click', () => {
+          todos = todos.filter(todo => todo.id !== item.id);
+          saveTodos();
+          render();
+        });
+        li.append(checkbox, taskText, deleteButton);
+        list.append(li);
+      }
+      const completed = todos.filter(item => item.done).length;
+      const percentage = todos.length ? Math.round(completed / todos.length * 100) : 0;
+      count.textContent = `${completed} / ${todos.length} 已完成`;
+      progressFill.style.width = `${percentage}%`;
+      progress.setAttribute('aria-valuenow', String(percentage));
+      empty.hidden = visible.length > 0;
+      if (visible.length === 0) {
+        empty.innerHTML = filter === 'all' ? '目前還沒有任務 ✨<br>新增第一件待辦事項吧！' : filter === 'active' ? '目前沒有待完成的任務 🎉' : '目前沒有已完成的任務';
+      }
+    }
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      todos.unshift({ id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`, text, done: false });
+      saveTodos();
+      input.value = '';
+      filter = 'all';
+      updateFilters();
+      render();
+      input.focus();
+    });
+    function updateFilters() {
+      filterButtons.forEach(button => {
+        const active = button.dataset.filter === filter;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', String(active));
+      });
+    }
+    filterButtons.forEach(button => button.addEventListener('click', () => {
+      filter = button.dataset.filter;
+      updateFilters();
+      render();
+    }));
+    render();
+  </script>
+</body>
+</html>
